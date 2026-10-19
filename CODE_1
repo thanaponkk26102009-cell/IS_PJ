@@ -1,0 +1,146 @@
+
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include "Adafruit_PM25AQI.h"
+
+// OLED
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+#define OLED_ADDR 0x3C
+
+Adafruit_SSD1306 display(
+  SCREEN_WIDTH, SCREEN_HEIGHT,
+  &Wire, OLED_RESET
+);
+
+// PMS5003 ใช้ UART2
+Adafruit_PM25AQI pm25 = Adafruit_PM25AQI();
+
+// Buzzer
+#define BUZZER_PIN 25
+
+// เกณฑ์แจ้งเตือน PM2.5 (ug/m3)
+const int PM25_LIMIT = 35;
+
+// ตั้งเวลาการเตือน
+unsigned long lastBeep = 0;
+bool buzzerState = false;
+const unsigned long BEEP_INTERVAL = 500;
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
+
+  // OLED I2C: SDA = 21, SCL = 22
+  Wire.begin(21, 22);
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR)) {
+    Serial.println("OLED not found!");
+    while (true) {
+      delay(100);
+    }
+  }
+
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.println("ESP32 Dust Monitor");
+  display.println("Starting...");
+  display.display();
+
+  // PMS5003 ต่อ TX เข้าขา RX2 = GPIO16
+  Serial2.begin(
+    9600, SERIAL_8N1, 16, 17
+  );
+
+  if (!pm25.begin_UART(&Serial2)) {
+    Serial.println("PMS5003 not found!");
+
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.println("PMS5003 ERROR");
+    display.println("Check wiring");
+    display.display();
+
+    while (true) {
+      delay(100);
+    }
+  }
+
+  delay(1000);
+}
+
+void loop() {
+  PM25_AQI_Data data;
+
+  // อ่านข้อมูลจาก PMS5003
+  if (!pm25.read(&data)) {
+    Serial.println("Reading sensor...");
+    delay(500);
+    return;
+  }
+
+  int pm25Value = data.pm25_standard;
+  int pm10Value = data.pm10_standard;
+
+  // แสดงผล Serial Monitor
+  Serial.print("PM2.5: ");
+  Serial.print(pm25Value);
+  Serial.print(" ug/m3 | PM10: ");
+  Serial.print(pm10Value);
+  Serial.println(" ug/m3");
+
+  // แสดงผล OLED
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.println("ESP32 DUST MONITOR");
+
+  display.setTextSize(2);
+  display.setCursor(0, 15);
+  display.print("PM2.5:");
+  display.println(pm25Value);
+
+  display.setTextSize(1);
+  display.setCursor(0, 40);
+  display.print("PM10: ");
+  display.print(pm10Value);
+  display.println(" ug/m3");
+
+  display.setCursor(0, 54);
+  if (pm25Value > PM25_LIMIT) {
+    display.println("WARNING! HIGH DUST");
+  } else {
+    display.println("Air: Below threshold");
+  }
+
+  display.display();
+
+  // ควบคุม Active Buzzer
+  if (pm25Value > PM25_LIMIT) {
+    unsigned long now = millis();
+
+    if (now - lastBeep >= BEEP_INTERVAL) {
+      lastBeep = now;
+      buzzerState = !buzzerState;
+
+      digitalWrite(
+        BUZZER_PIN,
+        buzzerState ? HIGH : LOW
+      );
+    }
+  } else {
+    digitalWrite(BUZZER_PIN, LOW);
+    buzzerState = false;
+    lastBeep = millis();
+  }
+
+  delay(500);
+}
