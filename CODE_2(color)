@@ -1,0 +1,55 @@
+
+  // แสดงผล OLED แบ่งระดับฝุ่น 3 ระดับ
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.println("ESP32 DUST MONITOR");
+
+  display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
+
+  display.setTextSize(2);
+  display.setCursor(0, 14);
+  display.print("PM2.5:");
+  display.println(pm25Value);
+
+  display.setTextSize(1);
+  display.setCursor(0, 36);
+  display.print("PM10: ");
+  display.print(pm10Value);
+  display.println(" ug/m3");
+
+  // แบ่งระดับฝุ่นและควบคุม Buzzer
+  if (pm25Value <= 15) {
+    display.drawRect(0, 48, 128, 16, SSD1306_WHITE);
+    display.setCursor(25, 52);
+    display.print("NORMAL");
+    digitalWrite(BUZZER_PIN, LOW);
+    buzzerState = false;
+
+  } else if (pm25Value <= 35) {
+    display.drawRect(0, 48, 128, 16, SSD1306_WHITE);
+    display.setCursor(22, 52);
+    display.print("CAUTION");
+    digitalWrite(BUZZER_PIN, LOW);
+    buzzerState = false;
+
+  } else {
+    display.fillRect(0, 48, 128, 16, SSD1306_WHITE);
+    display.setTextColor(SSD1306_BLACK);
+    display.setCursor(25, 52);
+    display.print("DANGER");
+    display.setTextColor(SSD1306_WHITE);
+
+    unsigned long now = millis();
+
+    if (now - lastBeep >= 500) {
+      lastBeep = now;
+      buzzerState = !buzzerState;
+      digitalWrite(BUZZER_PIN, buzzerState ? HIGH : LOW);
+    }
+  }
+
+  display.display();
+  delay(100);
